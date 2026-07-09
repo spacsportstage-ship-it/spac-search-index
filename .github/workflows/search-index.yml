@@ -9,8 +9,14 @@ on:
     types:
       - rebuild-prepared-search-index
   schedule:
-    # Avoid minute 0, where GitHub scheduled workflows are most likely to be delayed or dropped.
-    - cron: "7-59/5 * * * *"
+    # Daily 06:00 Europe/Amsterdam anchor runs. GitHub cron is UTC, so keep
+    # both summer time (04:06 UTC) and winter time (05:06 UTC).
+    - cron: "6 4 * * *"
+    - cron: "6 5 * * *"
+    # GitHub schedules are best-effort. Staggered entries give the feed more
+    # chances to refresh without using busy minute 0.
+    - cron: "7,22,37,52 * * * *"
+    - cron: "13,28,43,58 * * * *"
 
 permissions:
   contents: read
@@ -61,6 +67,94 @@ jobs:
           }
 
           console.log(`Validated ${products.length} prepared products.`);
+          NODE
+
+      - name: Validate sale prices against Channable
+        run: |
+          node - <<'NODE'
+          const fs = require("node:fs");
+
+          const FEED_URL = "https://files.channable.com/q8jk53gX0RKnaEoOmcS8hQ==.json";
+          const prepared = JSON.parse(fs.readFileSync("dist/prepared.json", "utf8"));
+          const products = Array.isArray(prepared.products) ? prepared.products : [];
+
+          function first(value) {
+            if (Array.isArray(value)) return value.find((item) => item !== null && typeof item !== "undefined" && String(item).trim()) || "";
+            return value || "";
+          }
+
+          function amount(value) {
+            let text = String(first(value) || "").replace(/[^\d,.-]/g, "");
+            if (!text) return NaN;
+            if (text.includes(",") && text.includes(".")) {
+              text = text.lastIndexOf(",") > text.lastIndexOf(".") ? text.replace(/\./g, "").replace(",", ".") : text.replace(/,/g, "");
+            } else if (text.includes(",")) {
+              text = text.replace(",", ".");
+            }
+            return Number.parseFloat(text);
+          }
+
+          function cents(value) {
+            return Number.isFinite(value) ? Math.round(value * 100) : 0;
+          }
+
+          function pathKey(url) {
+            try {
+              return new URL(String(url || ""), "https://www.spacsport.nl").pathname.toLowerCase();
+            } catch {
+              return String(url || "").split("?")[0].toLowerCase();
+            }
+          }
+
+          function inStock(row) {
+            const availability = String(first(row.availability) || "").toLowerCase().replace(/\s+/g, "");
+            const stock = Number.parseInt(first(row.stock), 10);
+            if (/outofstock|nietopvoorraad|unavailable/.test(availability)) return false;
+            if (Number.isFinite(stock)) return stock > 0;
+            return true;
+          }
+
+          const response = await fetch(FEED_URL, { headers: { "Cache-Control": "no-cache" } });
+          if (!response.ok) throw new Error(`Channable feed returned HTTP ${response.status}`);
+          const rows = await response.json();
+          const discounted = new Map();
+
+          for (const row of rows) {
+            const key = pathKey(first(row.link || row.url));
+            const regular = amount(row.price);
+            const sale = amount(row.sale_price);
+            if (!key || !inStock(row) || !(regular > 0) || !(sale > 0) || !(sale < regular - 0.005)) continue;
+            const current = discounted.get(key) || { regular: Infinity, sale: Infinity };
+            current.regular = Math.min(current.regular, regular);
+            current.sale = Math.min(current.sale, sale);
+            discounted.set(key, current);
+          }
+
+          const preparedByPath = new Map(products.map((product) => [pathKey(product.url || product.key), product]));
+          const mismatches = [];
+
+          for (const [key, expected] of discounted) {
+            const product = preparedByPath.get(key);
+            if (!product) continue;
+            const preparedPrice = amount(product.price);
+            const preparedOldPrice = amount(product.oldPrice);
+            if (cents(preparedPrice) !== cents(expected.sale) || cents(preparedOldPrice) !== cents(expected.regular)) {
+              mismatches.push({
+                key,
+                title: product.title,
+                preparedPrice: product.price,
+                preparedOldPrice: product.oldPrice,
+                expectedPrice: expected.sale,
+                expectedOldPrice: expected.regular,
+              });
+            }
+          }
+
+          if (mismatches.length) {
+            throw new Error(`Prepared sale price mismatch for ${mismatches.length} products: ${JSON.stringify(mismatches.slice(0, 8))}`);
+          }
+
+          console.log(`Validated ${discounted.size} discounted Channable prices against prepared output.`);
           NODE
 
       - name: Configure GitHub Pages
