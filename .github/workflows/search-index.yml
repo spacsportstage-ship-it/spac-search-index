@@ -114,47 +114,54 @@ jobs:
             return true;
           }
 
-          const response = await fetch(FEED_URL, { headers: { "Cache-Control": "no-cache" } });
-          if (!response.ok) throw new Error(`Channable feed returned HTTP ${response.status}`);
-          const rows = await response.json();
-          const discounted = new Map();
+          async function main() {
+            const response = await fetch(FEED_URL, { headers: { "Cache-Control": "no-cache" } });
+            if (!response.ok) throw new Error(`Channable feed returned HTTP ${response.status}`);
+            const rows = await response.json();
+            const discounted = new Map();
 
-          for (const row of rows) {
-            const key = pathKey(first(row.link || row.url));
-            const regular = amount(row.price);
-            const sale = amount(row.sale_price);
-            if (!key || !inStock(row) || !(regular > 0) || !(sale > 0) || !(sale < regular - 0.005)) continue;
-            const current = discounted.get(key) || { regular: Infinity, sale: Infinity };
-            current.regular = Math.min(current.regular, regular);
-            current.sale = Math.min(current.sale, sale);
-            discounted.set(key, current);
-          }
-
-          const preparedByPath = new Map(products.map((product) => [pathKey(product.url || product.key), product]));
-          const mismatches = [];
-
-          for (const [key, expected] of discounted) {
-            const product = preparedByPath.get(key);
-            if (!product) continue;
-            const preparedPrice = amount(product.price);
-            const preparedOldPrice = amount(product.oldPrice);
-            if (cents(preparedPrice) !== cents(expected.sale) || cents(preparedOldPrice) !== cents(expected.regular)) {
-              mismatches.push({
-                key,
-                title: product.title,
-                preparedPrice: product.price,
-                preparedOldPrice: product.oldPrice,
-                expectedPrice: expected.sale,
-                expectedOldPrice: expected.regular,
-              });
+            for (const row of rows) {
+              const key = pathKey(first(row.link || row.url));
+              const regular = amount(row.price);
+              const sale = amount(row.sale_price);
+              if (!key || !inStock(row) || !(regular > 0) || !(sale > 0) || !(sale < regular - 0.005)) continue;
+              const current = discounted.get(key) || { regular: Infinity, sale: Infinity };
+              current.regular = Math.min(current.regular, regular);
+              current.sale = Math.min(current.sale, sale);
+              discounted.set(key, current);
             }
+
+            const preparedByPath = new Map(products.map((product) => [pathKey(product.url || product.key), product]));
+            const mismatches = [];
+
+            for (const [key, expected] of discounted) {
+              const product = preparedByPath.get(key);
+              if (!product) continue;
+              const preparedPrice = amount(product.price);
+              const preparedOldPrice = amount(product.oldPrice);
+              if (cents(preparedPrice) !== cents(expected.sale) || cents(preparedOldPrice) !== cents(expected.regular)) {
+                mismatches.push({
+                  key,
+                  title: product.title,
+                  preparedPrice: product.price,
+                  preparedOldPrice: product.oldPrice,
+                  expectedPrice: expected.sale,
+                  expectedOldPrice: expected.regular,
+                });
+              }
+            }
+
+            if (mismatches.length) {
+              throw new Error(`Prepared sale price mismatch for ${mismatches.length} products: ${JSON.stringify(mismatches.slice(0, 8))}`);
+            }
+
+            console.log(`Validated ${discounted.size} discounted Channable prices against prepared output.`);
           }
 
-          if (mismatches.length) {
-            throw new Error(`Prepared sale price mismatch for ${mismatches.length} products: ${JSON.stringify(mismatches.slice(0, 8))}`);
-          }
-
-          console.log(`Validated ${discounted.size} discounted Channable prices against prepared output.`);
+          main().catch((error) => {
+            console.error(error);
+            process.exitCode = 1;
+          });
           NODE
 
       - name: Configure GitHub Pages
