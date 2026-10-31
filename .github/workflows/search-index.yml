@@ -44,6 +44,9 @@ jobs:
         with:
           node-version: 24
 
+      - name: Test storefront transport projection
+        run: node --test tools/search-index/storefront-index.test.mjs
+
       - name: Build prepared index
         run: node tools/search-index/build-prepared-search-index.mjs
 

@@ -3,6 +3,7 @@ import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import { storefrontIndex } from "./storefront-index.mjs";
 
 const rootDir = process.cwd();
 const workerPath = path.resolve(process.env.SPAC_WORKER_FILE || path.join(rootDir, "cloudflare-spac-search-index-worker.js"));
@@ -53,9 +54,12 @@ async function main() {
     if (!parsed || !Array.isArray(parsed.products)) {
       throw new Error("Prepared build did not return a products array.");
     }
+    const storefrontBody = JSON.stringify(storefrontIndex(parsed));
+    const storefrontPath = path.join(path.dirname(outPath), "storefront.json");
 
     await mkdir(path.dirname(outPath), { recursive: true });
     await writeFile(outPath, body, "utf8");
+    await writeFile(storefrontPath, storefrontBody, "utf8");
 
     const gzipBytes = gzipSync(Buffer.from(body)).byteLength;
     const elapsed = Date.now() - started;
@@ -65,6 +69,7 @@ async function main() {
     console.log(`Version: ${parsed.version || "unknown"}`);
     console.log(`Raw size: ${formatBytes(Buffer.byteLength(body))}`);
     console.log(`Gzip size: ${formatBytes(gzipBytes)}`);
+    console.log(`Storefront sidecar: ${formatBytes(Buffer.byteLength(storefrontBody))} (${formatBytes(gzipSync(storefrontBody).byteLength)} gzip)`);
     console.log(`Build time: ${elapsed} ms`);
   } finally {
     await rm(tempWorkerPath, { force: true });
