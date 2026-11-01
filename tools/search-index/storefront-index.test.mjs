@@ -7,7 +7,7 @@ import {fileURLToPath} from 'node:url';
 import {spawnSync} from 'node:child_process';
 
 const builder=fileURLToPath(new URL('./build-prepared-search-index.mjs',import.meta.url));
-const fields=['url','title','brand','color','root','category','categoryLeaf','sizes','image','price','oldPrice','isNew','stock','article','productId','barcode'];
+const fields=['url','title','brand','color','root','category','categoryLeaf','sizes','image','price','oldPrice','isNew','stock','article','productId','barcode','groupId'];
 async function build(data,check){
  const directory=await mkdtemp(path.join(tmpdir(),'spac-storefront-test-'));
  try{
@@ -18,7 +18,7 @@ async function build(data,check){
   await check({directory,output,body,result});
  }finally{assert.ok(path.resolve(directory).startsWith(path.join(path.resolve(tmpdir()),'spac-storefront-test-')));await rm(directory,{recursive:true,force:true});}
 }
-const product={url:'https://www.spacsport.nl/dames/jacket_001.html?channable=1',title:'Beta "AR" dames',brand:'ARCTERYX',color:'Blauw',root:'Dames',category:'Dames > Jassen',categoryLeaf:'Jassen',sizes:['36','38 2/3'],image:'https://www.spacsport.nl/img/001.jpg',price:'EUR 1.234,50',oldPrice:'EUR 1.500,00',isNew:true,stock:'3',article:'000001',productId:'001',barcode:'000123',allTokens:['unused'],visibleCompact:'unused',rank:19};
+const product={url:'https://www.spacsport.nl/dames/jacket_001.html?channable=1',title:'Beta "AR" dames',brand:'ARCTERYX',color:'Blauw',root:'Dames',category:'Dames > Jassen',categoryLeaf:'Jassen',sizes:['36','38 2/3'],image:'https://www.spacsport.nl/img/001.jpg',price:'EUR 1.234,50',oldPrice:'EUR 1.500,00',isNew:true,stock:'3',article:'000001',productId:'001',barcode:'000123',groupId:'000123-10',allTokens:['unused'],visibleCompact:'unused',rank:19};
 const sample=products=>({version:'spac-search-prepared-v1',generatedAt:'2026-10-31T21:00:00.000Z',productCount:products.length,products});
 
 test('builder preserves original prepared bytes and emits only the fields the storefront reads',async()=>{

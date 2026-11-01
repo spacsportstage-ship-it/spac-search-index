@@ -3,7 +3,7 @@
 // deduplicate or infer any product values here: the storefront does that itself.
 export const storefrontFields=Object.freeze([
  'url','title','brand','color','root','category','categoryLeaf','sizes','image',
- 'price','oldPrice','isNew','stock','article','productId','barcode'
+ 'price','oldPrice','isNew','stock','article','productId','barcode','groupId'
 ]);
 
 export function storefrontIndex(source){
